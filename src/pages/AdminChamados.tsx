@@ -3,7 +3,7 @@
 // Rota: /admin/chamados  (protegida por Supabase Auth)
 // ============================================================
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   X, Search, RefreshCw, MessageCircle, ExternalLink,
   Wrench, Camera, Wifi, Cpu, Music, HelpCircle,
@@ -203,9 +203,64 @@ function semResposta(c: Chamado): boolean {
   return !c.resposta_admin && c.status !== "resolvido" && c.status !== "fechado";
 }
 
+
+// ── Constantes de auth (mesma chave usada em Admin.tsx) ──────
+const ADMIN_PASSWORD = "elyon2026";
+const SESSION_KEY    = "elyon_admin_ok";
+
+// ── Tela de login ─────────────────────────────────────────────
+const TelaLogin = () => {
+  const [pass, setPass]       = React.useState("");
+  const [err, setErr]         = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr("");
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 400));
+    if (pass === ADMIN_PASSWORD) {
+      sessionStorage.setItem(SESSION_KEY, "1");
+      window.location.reload();
+    } else {
+      setErr("Senha incorreta.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <form
+        onSubmit={handleLogin}
+        className="bg-card border border-border rounded-xl p-8 w-full max-w-sm shadow-lg space-y-4"
+      >
+        <h2 className="text-xl font-bold text-foreground text-center">Painel Admin</h2>
+        <p className="text-sm text-muted-foreground text-center">Chamados de Suporte</p>
+        <input
+          type="password"
+          placeholder="Senha"
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          autoFocus
+        />
+        {err && <p className="text-red-500 text-sm text-center">{err}</p>}
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-primary text-primary-foreground py-2 rounded-lg font-semibold text-sm hover:opacity-90 disabled:opacity-50 transition"
+        >
+          {loading ? "Verificando…" : "Entrar"}
+        </button>
+      </form>
+    </div>
+  );
+};
+
 // ── Componente principal ──────────────────────────────────────
 
 export const AdminChamados = () => {
+  const [session, setSession] = useState(false);
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [loading, setLoading]   = useState(true);
   const [erro, setErro]         = useState<string | null>(null);
@@ -231,7 +286,16 @@ export const AdminChamados = () => {
     }
   }, []);
 
+  // Verifica sessão admin ao montar
+  useEffect(() => {
+    const ok = sessionStorage.getItem(SESSION_KEY) === "1";
+    setSession(ok);
+  }, []);
+
   useEffect(() => { carregar(); }, [carregar]);
+
+  // Guard: redireciona para login se não autenticado
+  if (!session) return <TelaLogin />;
 
   // Métricas de cabeçalho
   const totalAbertos = chamados.filter((c) => c.status === "aberto").length;
@@ -353,6 +417,14 @@ export const AdminChamados = () => {
               className="p-2 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            </button>
+            {/* Logout */}
+            <button
+              onClick={() => { sessionStorage.removeItem(SESSION_KEY); window.location.reload(); }}
+              className="p-2 rounded-lg border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/40 transition-colors"
+              title="Sair"
+            >
+              <XCircle className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>

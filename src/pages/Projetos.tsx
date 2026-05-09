@@ -6,7 +6,7 @@
 // Stack: React + TypeScript + Tailwind + Framer Motion + Lucide
 // ============================================================
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, X, Check, Search, RefreshCw, ChevronRight,
@@ -227,9 +227,62 @@ function formatCurrency(val: number | null | undefined): string {
   }).format(val);
 }
 
+// ── Constantes de auth ────────────────────────────────────────
+const ADMIN_PASSWORD = "elyon2026";
+const SESSION_KEY    = "elyon_admin_ok";
+
+const TelaLoginProjetos = () => {
+  const [pass, setPass]       = React.useState("");
+  const [err, setErr]         = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr("");
+    setLoading(true);
+    await new Promise((r) => setTimeout(r, 400));
+    if (pass === ADMIN_PASSWORD) {
+      sessionStorage.setItem(SESSION_KEY, "1");
+      window.location.reload();
+    } else {
+      setErr("Senha incorreta.");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <form
+        onSubmit={handleLogin}
+        className="bg-card border border-border rounded-xl p-8 w-full max-w-sm shadow-lg space-y-4"
+      >
+        <h2 className="text-xl font-bold text-foreground text-center">Painel Admin</h2>
+        <p className="text-sm text-muted-foreground text-center">Gestão de Projetos</p>
+        <input
+          type="password"
+          placeholder="Senha"
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          autoFocus
+        />
+        {err && <p className="text-red-500 text-sm text-center">{err}</p>}
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-primary text-primary-foreground py-2 rounded-lg font-semibold text-sm hover:opacity-90 disabled:opacity-50 transition"
+        >
+          {loading ? "Verificando…" : "Entrar"}
+        </button>
+      </form>
+    </div>
+  );
+};
+
 // ── Componente principal ──────────────────────────────────────
 
 export const Projetos = () => {
+  const [session, setSession]         = useState(false);
   const [projetos, setProjetos]       = useState<Projeto[]>([]);
   const [loading, setLoading]         = useState(true);
   const [search, setSearch]           = useState("");
@@ -253,7 +306,16 @@ export const Projetos = () => {
     }
   }, []);
 
+  // Verifica sessão admin ao montar
+  useEffect(() => {
+    const ok = sessionStorage.getItem(SESSION_KEY) === "1";
+    setSession(ok);
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+
+  // Guard: redireciona para login se não autenticado
+  if (!session) return <TelaLoginProjetos />;
 
   // Filtragem
   const filtered = projetos.filter((p) => {
@@ -328,6 +390,13 @@ export const Projetos = () => {
             >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">Novo Projeto</span>
+            </button>
+            <button
+              onClick={() => { sessionStorage.removeItem(SESSION_KEY); window.location.reload(); }}
+              className="p-2 rounded-lg border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/40 transition-colors"
+              title="Sair"
+            >
+              <XCircle className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
