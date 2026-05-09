@@ -1,4 +1,146 @@
 
+// ── Tab: Home (hub de navegação) ─────────────────────────────
+
+const HomeTab = ({ onNavigate, leads, resumo }: {
+  onNavigate: (tab: "home" | "leads" | "financeiro" | "sistema") => void;
+  leads: Lead[];
+  resumo: PipelineResumo[];
+}) => {
+  const total    = leads.length;
+  const novos    = leads.filter((l) => l.status === "novo").length;
+  const fechados = leads.filter((l) => l.status === "fechado").length;
+  const hoje     = leads.filter((l) => new Date(l.created_at).toDateString() === new Date().toDateString()).length;
+
+  const cards = [
+    {
+      title: "Pipeline de Leads",
+      desc: "Kanban com todos os leads, contatos e status de negociação",
+      href: null as null | string,
+      tab: "leads" as const,
+      icon: <Activity className="h-6 w-6" />,
+      color: "#a78bfa",
+      stats: [
+        { label: "Total", value: total },
+        { label: "Novos", value: novos },
+        { label: "Hoje",  value: hoje  },
+        { label: "Fechados", value: fechados },
+      ],
+    },
+    {
+      title: "Gestão de Projetos",
+      desc: "Projetos, OS para técnicos, documentos e controle financeiro",
+      href: "/admin/projetos",
+      tab: null as null | "leads" | "financeiro" | "sistema",
+      icon: <FolderOpen className="h-6 w-6" />,
+      color: "#38bdf8",
+      stats: [],
+    },
+    {
+      title: "Chamados de Suporte",
+      desc: "Tickets abertos pelos clientes via portal, com respostas e histórico",
+      href: "/admin/chamados",
+      tab: null as null | "leads" | "financeiro" | "sistema",
+      icon: <TicketCheck className="h-6 w-6" />,
+      color: "#fbbf24",
+      stats: [],
+    },
+    {
+      title: "Dashboard Financeiro",
+      desc: "Receita, custo e margem consolidados de todos os projetos",
+      href: null as null | string,
+      tab: "financeiro" as const,
+      icon: <BarChart2 className="h-6 w-6" />,
+      color: "#34d399",
+      stats: [],
+    },
+    {
+      title: "Diagnóstico do Sistema",
+      desc: "Status das variáveis de ambiente, conexão Supabase e tabelas",
+      href: null as null | string,
+      tab: "sistema" as const,
+      icon: <Database className="h-6 w-6" />,
+      color: "#f87171",
+      stats: [],
+    },
+  ];
+
+  return (
+    <div className="space-y-8">
+      {/* Saudação */}
+      <div>
+        <h1 className="text-2xl font-black tracking-tight">
+          Painel <span className="text-primary-glow">ELYON</span>
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">Selecione um módulo para começar</p>
+      </div>
+
+      {/* Cards de navegação */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {cards.map((c) => {
+          const handleClick = () => {
+            if (c.href) window.location.href = c.href;
+            else if (c.tab) onNavigate(c.tab);
+          };
+          return (
+            <button
+              key={c.title}
+              onClick={handleClick}
+              className="glass-card rounded-2xl p-5 text-left hover:shadow-glow hover:-translate-y-1 transition-all duration-300 group border border-border/60 hover:border-opacity-60"
+              style={{ borderColor: `${c.color}20` }}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="p-2.5 rounded-xl" style={{ background: `${c.color}15`, color: c.color }}>
+                  {c.icon}
+                </div>
+                <ExternalLink className="h-3.5 w-3.5 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors mt-1" />
+              </div>
+              <h3 className="font-bold text-sm mb-1" style={{ color: c.color }}>{c.title}</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed mb-4">{c.desc}</p>
+              {c.stats.length > 0 && (
+                <div className="grid grid-cols-4 gap-2 pt-3 border-t border-border/40">
+                  {c.stats.map((s) => (
+                    <div key={s.label} className="text-center">
+                      <div className="text-lg font-black" style={{ color: c.color }}>{s.value}</div>
+                      <div className="text-xs text-muted-foreground uppercase tracking-wider">{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {c.href && (
+                <div className="pt-3 border-t border-border/40">
+                  <span className="text-xs font-mono text-muted-foreground/50">{c.href}</span>
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Links rápidos */}
+      <div className="glass-card rounded-2xl p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">Acesso rápido — links diretos</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[
+            { label: "Portal do cliente",  href: "/portal/{token}",  desc: "Acesse via token do projeto" },
+            { label: "OS do técnico",      href: "/os/{token}",      desc: "Acesse via token da OS" },
+            { label: "Site institucional", href: "/",                desc: "Página pública ELYON" },
+          ].map((l) => (
+            <a key={l.label} href={l.href.includes("{") ? "#" : l.href} target={l.href.includes("{") ? undefined : "_blank"} rel="noopener noreferrer"
+              className="flex items-center gap-3 p-3 rounded-xl border border-border/60 hover:border-primary-glow/40 hover:bg-primary/5 transition-all group">
+              <ExternalLink className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary-glow transition-colors flex-shrink-0" />
+              <div>
+                <p className="text-xs font-semibold">{l.label}</p>
+                <p className="text-xs text-muted-foreground font-mono">{l.href}</p>
+              </div>
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 // ── Tab: Financeiro ───────────────────────────────────────────
 
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -51,25 +193,17 @@ const FinanceiroTab = () => {
     return { ...p, receita: r, custo: c, margem: r - c };
   });
 
-  if (loading) return (
-    <div className="flex items-center justify-center py-24">
-      <Loader2 className="h-6 w-6 animate-spin text-primary-glow" />
-    </div>
-  );
-  if (erro) return (
-    <div className="flex items-center gap-3 p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-sm">
-      <AlertCircle className="h-4 w-4 flex-shrink-0" />{erro}
-    </div>
-  );
+  if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-primary-glow" /></div>;
+  if (erro)    return <div className="flex items-center gap-3 p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-sm"><AlertCircle className="h-4 w-4 flex-shrink-0" />{erro}</div>;
 
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Receita total",     value: fmt(receita),        color: "#34d399", icon: <TrendingUp   className="h-4 w-4" /> },
-          { label: "Custo total",       value: fmt(custo),           color: "#f87171", icon: <TrendingDown className="h-4 w-4" /> },
-          { label: "Margem bruta",      value: fmt(margem),          color: margem >= 0 ? "#a78bfa" : "#f87171", icon: <DollarSign className="h-4 w-4" /> },
-          { label: "Propostas (total)", value: fmt(totalProposta),   color: "#fbbf24", icon: <BarChart2    className="h-4 w-4" /> },
+          { label: "Receita total",     value: fmt(receita),      color: "#34d399", icon: <TrendingUp   className="h-4 w-4" /> },
+          { label: "Custo total",       value: fmt(custo),         color: "#f87171", icon: <TrendingDown className="h-4 w-4" /> },
+          { label: "Margem bruta",      value: fmt(margem),        color: margem >= 0 ? "#a78bfa" : "#f87171", icon: <DollarSign className="h-4 w-4" /> },
+          { label: "Propostas (total)", value: fmt(totalProposta), color: "#fbbf24", icon: <BarChart2   className="h-4 w-4" /> },
         ].map((k) => (
           <div key={k.label} className="glass-card rounded-xl p-4 flex items-start gap-3">
             <div className="p-2 rounded-lg mt-0.5" style={{ background: `${k.color}18`, color: k.color }}>{k.icon}</div>
@@ -88,8 +222,7 @@ const FinanceiroTab = () => {
             <span className="text-sm font-bold" style={{ color: margem >= 0 ? "#a78bfa" : "#f87171" }}>{pct(margem, receita)}</span>
           </div>
           <div className="h-2 rounded-full bg-card/60 overflow-hidden">
-            <div className="h-full rounded-full transition-all"
-              style={{ width: `${Math.min(100, Math.max(0, (margem / receita) * 100))}%`, background: margem >= 0 ? "#a78bfa" : "#f87171" }} />
+            <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, (margem / receita) * 100))}%`, background: margem >= 0 ? "#a78bfa" : "#f87171" }} />
           </div>
           <div className="flex justify-between text-xs text-muted-foreground mt-1.5">
             <span>Custo: {pct(custo, receita)}</span>
@@ -100,10 +233,7 @@ const FinanceiroTab = () => {
 
       <div className="glass-card rounded-2xl overflow-hidden">
         <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <FolderOpen className="h-4 w-4 text-primary-glow" />
-            <span className="font-semibold text-sm">Projetos — breakdown financeiro</span>
-          </div>
+          <div className="flex items-center gap-2"><FolderOpen className="h-4 w-4 text-primary-glow" /><span className="font-semibold text-sm">Projetos — breakdown financeiro</span></div>
           <span className="text-xs text-muted-foreground">{projetos.length} projeto(s)</span>
         </div>
         <div className="overflow-x-auto">
@@ -117,18 +247,13 @@ const FinanceiroTab = () => {
             </thead>
             <tbody>
               {porProjeto.map((p, i) => {
-                const cor = statusColors[p.status] ?? "#94a3b8";
+                const cor  = statusColors[p.status] ?? "#94a3b8";
                 const mPct = p.receita > 0 ? Math.round((p.margem / p.receita) * 100) : null;
                 return (
                   <tr key={p.id} className={`border-b border-border/30 hover:bg-primary/5 transition-colors ${i % 2 !== 0 ? "bg-card/20" : ""}`}>
                     <td className="px-4 py-3 font-medium max-w-[160px] truncate">{p.titulo}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">{p.cliente_nome}</td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full border"
-                        style={{ color: cor, borderColor: `${cor}40`, background: `${cor}12` }}>
-                        {p.status.replace("_", " ")}
-                      </span>
-                    </td>
+                    <td className="px-4 py-3"><span className="text-xs font-semibold px-2 py-0.5 rounded-full border" style={{ color: cor, borderColor: `${cor}40`, background: `${cor}12` }}>{p.status.replace("_", " ")}</span></td>
                     <td className="px-4 py-3 font-mono text-xs text-green-400">{p.receita > 0 ? fmt(p.receita) : "—"}</td>
                     <td className="px-4 py-3 font-mono text-xs text-red-400">{p.custo   > 0 ? fmt(p.custo)   : "—"}</td>
                     <td className="px-4 py-3 font-mono text-xs" style={{ color: p.margem >= 0 ? "#a78bfa" : "#f87171" }}>
@@ -138,9 +263,7 @@ const FinanceiroTab = () => {
                   </tr>
                 );
               })}
-              {projetos.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground text-sm">Nenhum projeto cadastrado ainda.</td></tr>
-              )}
+              {projetos.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground text-sm">Nenhum projeto cadastrado ainda.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -154,7 +277,8 @@ const FinanceiroTab = () => {
   );
 };
 
-// ── Tab: Sistema ──────────────────────────────────────────────
+
+// ── Tab: Sistema ─────────────────────────────────────────────
 
 const SistemaTab = () => {
   const [counts, setCounts]   = React.useState<{ tabela: string; label: string; icon: React.ReactNode; count: number | null; erro: string | null }[]>([]);
@@ -169,18 +293,12 @@ const SistemaTab = () => {
   ];
 
   const tabelasDef = [
-    { tabela: "leads",            label: "Leads",           icon: <Activity   className="h-3.5 w-3.5" /> },
-    { tabela: "projetos",         label: "Projetos",        icon: <FolderOpen className="h-3.5 w-3.5" /> },
-    { tabela: "ordens_servico",   label: "Ordens de serviço", icon: <Wrench   className="h-3.5 w-3.5" /> },
-    { tabela: "chamados_suporte", label: "Chamados",        icon: <TicketCheck className="h-3.5 w-3.5" /> },
-    { tabela: "financeiro_itens", label: "Itens financeiros", icon: <DollarSign className="h-3.5 w-3.5" /> },
-    { tabela: "propostas",        label: "Propostas",       icon: <BarChart2  className="h-3.5 w-3.5" /> },
-  ];
-
-  const adminPages = [
-    { label: "Leads (pipeline)", href: "/admin",          icon: <Activity   className="h-3.5 w-3.5" /> },
-    { label: "Projetos",         href: "/admin/projetos", icon: <FolderOpen className="h-3.5 w-3.5" /> },
-    { label: "Chamados",         href: "/admin/chamados", icon: <TicketCheck className="h-3.5 w-3.5" /> },
+    { tabela: "leads",            label: "Leads",             icon: <Activity    className="h-3.5 w-3.5" /> },
+    { tabela: "projetos",         label: "Projetos",          icon: <FolderOpen  className="h-3.5 w-3.5" /> },
+    { tabela: "ordens_servico",   label: "Ordens de serviço", icon: <Wrench      className="h-3.5 w-3.5" /> },
+    { tabela: "chamados_suporte", label: "Chamados",          icon: <TicketCheck className="h-3.5 w-3.5" /> },
+    { tabela: "financeiro_itens", label: "Itens financeiros", icon: <DollarSign  className="h-3.5 w-3.5" /> },
+    { tabela: "propostas",        label: "Propostas",         icon: <BarChart2   className="h-3.5 w-3.5" /> },
   ];
 
   React.useEffect(() => {
@@ -202,16 +320,16 @@ const SistemaTab = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const supabaseOk    = counts.some((c) => c.count !== null);
-  const envOk         = envVars.filter((e) => !!e.value).length;
+  const supabaseOk = counts.some((c) => c.count !== null);
+  const envOk      = envVars.filter((e) => !!e.value).length;
 
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { label: "Supabase",               ok: !loading && supabaseOk, desc: loading ? "Verificando..." : supabaseOk ? "Conectado e respondendo" : "Sem resposta", icon: <Database className="h-5 w-5" /> },
-          { label: "Variáveis de ambiente",   ok: envOk === envVars.length, desc: `${envOk}/${envVars.length} configuradas`, icon: <ShieldCheck className="h-5 w-5" /> },
-          { label: "Auth admin",              ok: true, desc: "Senha local sessionStorage (provisório)", icon: <Activity className="h-5 w-5" /> },
+          { label: "Supabase",             ok: !loading && supabaseOk,         desc: loading ? "Verificando..." : supabaseOk ? "Conectado e respondendo" : "Sem resposta",    icon: <Database    className="h-5 w-5" /> },
+          { label: "Variáveis de ambiente", ok: envOk === envVars.length,       desc: `${envOk}/${envVars.length} configuradas`,                                              icon: <ShieldCheck className="h-5 w-5" /> },
+          { label: "Auth admin",            ok: true,                           desc: "Senha local sessionStorage (provisório)",                                               icon: <Activity    className="h-5 w-5" /> },
         ].map((s) => (
           <div key={s.label} className={`glass-card rounded-xl p-4 border ${s.ok ? "border-green-500/20" : "border-red-500/20"}`}>
             <div className="flex items-center gap-2 mb-2">
@@ -231,10 +349,8 @@ const SistemaTab = () => {
         </div>
         <div className="divide-y divide-border/40">
           {envVars.map((e) => {
-            const ok = !!e.value;
-            const preview = e.value
-              ? (e.key.includes("KEY") || e.key.includes("TOKEN") ? `${e.value.slice(0, 8)}...${e.value.slice(-4)}` : e.value.length > 40 ? `${e.value.slice(0, 40)}...` : e.value)
-              : undefined;
+            const ok      = !!e.value;
+            const preview = e.value ? (e.key.includes("KEY") || e.key.includes("TOKEN") ? `${e.value.slice(0,8)}...${e.value.slice(-4)}` : e.value.length > 40 ? `${e.value.slice(0,40)}...` : e.value) : undefined;
             return (
               <div key={e.key} className="flex items-center gap-3 px-5 py-3">
                 {ok ? <CheckCircle2 className="h-4 w-4 text-green-400 flex-shrink-0" /> : <AlertCircle className="h-4 w-4 text-red-400 flex-shrink-0" />}
@@ -272,9 +388,12 @@ const SistemaTab = () => {
           <span className="font-semibold text-sm">Painéis admin</span>
         </div>
         <div className="divide-y divide-border/40">
-          {adminPages.map((p) => (
-            <a key={p.href} href={p.href}
-              className="flex items-center gap-3 px-5 py-3 hover:bg-primary/5 transition-colors group">
+          {[
+            { label: "Leads (pipeline)", href: "/admin",          icon: <Activity   className="h-3.5 w-3.5" /> },
+            { label: "Projetos",         href: "/admin/projetos", icon: <FolderOpen className="h-3.5 w-3.5" /> },
+            { label: "Chamados",         href: "/admin/chamados", icon: <TicketCheck className="h-3.5 w-3.5" /> },
+          ].map((p) => (
+            <a key={p.href} href={p.href} className="flex items-center gap-3 px-5 py-3 hover:bg-primary/5 transition-colors group">
               <div className="text-muted-foreground group-hover:text-primary-glow transition-colors">{p.icon}</div>
               <span className="text-sm flex-1">{p.label}</span>
               <code className="text-xs font-mono text-muted-foreground">{p.href}</code>
@@ -298,7 +417,7 @@ import {
   ChevronRight, StickyNote, X, Check, Search,
   BarChart2, Activity, Database, CheckCircle2, AlertCircle,
   DollarSign, TrendingUp, TrendingDown, FolderOpen,
-  TicketCheck, Wrench, ExternalLink, Loader2, ShieldCheck,
+  TicketCheck, Wrench, ExternalLink, Loader2, ShieldCheck, Home,
 } from "lucide-react";
 import {
   supabase,
@@ -440,7 +559,7 @@ const Dashboard = () => {
   const [search, setSearch]   = useState("");
   const [view, setView]       = useState<"kanban" | "list">("kanban");
   const [selected, setSelected] = useState<Lead | null>(null);
-  const [activeTab, setActiveTab] = useState<"leads" | "financeiro" | "sistema">("leads");
+  const [activeTab, setActiveTab] = useState<"home" | "leads" | "financeiro" | "sistema">("home");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -493,18 +612,20 @@ const Dashboard = () => {
             <span className="hidden sm:inline text-xs text-muted-foreground px-2 py-0.5 rounded-md border border-border">Admin</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center rounded-lg border border-border overflow-hidden">
+            {/* Nav tabs */}
+            <nav className="flex items-center rounded-lg border border-border overflow-hidden">
               {([
-                { id: "leads",      label: "Leads",      icon: <Activity  className="h-3 w-3" /> },
-                { id: "financeiro", label: "Financeiro", icon: <BarChart2 className="h-3 w-3" /> },
-                { id: "sistema",    label: "Sistema",    icon: <Database  className="h-3 w-3" /> },
+                { id: "home",       label: "Início",     icon: <Home       className="h-3 w-3" /> },
+                { id: "leads",      label: "Leads",      icon: <Activity   className="h-3 w-3" /> },
+                { id: "financeiro", label: "Financeiro", icon: <BarChart2  className="h-3 w-3" /> },
+                { id: "sistema",    label: "Sistema",    icon: <Database   className="h-3 w-3" /> },
               ] as const).map((t) => (
                 <button key={t.id} onClick={() => setActiveTab(t.id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors ${activeTab === t.id ? "bg-primary/15 text-primary-glow" : "text-muted-foreground hover:text-foreground"}`}>
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold transition-colors border-r border-border last:border-0 ${activeTab === t.id ? "bg-primary/15 text-primary-glow" : "text-muted-foreground hover:text-foreground"}`}>
                   {t.icon}{t.label}
                 </button>
               ))}
-            </div>
+            </nav>
             {activeTab === "leads" && (
               <>
                 <div className="relative">
@@ -528,7 +649,7 @@ const Dashboard = () => {
               </>
             )}
             <button onClick={handleLogout}
-              className="p-2 rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors">
+              className="p-2 rounded-lg border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/40 transition-colors" title="Sair">
               <LogOut className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -537,6 +658,7 @@ const Dashboard = () => {
 
       <div className="max-w-[1400px] mx-auto px-6 py-8">
 
+        {activeTab === "home"       && <HomeTab onNavigate={setActiveTab} leads={leads} resumo={resumo} />}
         {activeTab === "financeiro" && <FinanceiroTab />}
         {activeTab === "sistema"    && <SistemaTab />}
 
