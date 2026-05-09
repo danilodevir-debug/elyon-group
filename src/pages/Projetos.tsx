@@ -615,7 +615,7 @@ const NovoProjetoModal = ({
     try {
       await createProjeto({
         ...form,
-        valor_proposta: form.valor_proposta || null,
+        valor_proposta: form.valor_proposta ?? 0,
         lead_id: form.lead_id || null,
         data_inicio: form.data_inicio || undefined,
         data_previsao_conclusao: form.data_previsao_conclusao || undefined,
