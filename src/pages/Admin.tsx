@@ -48,6 +48,10 @@ function whatsappLink(phone: string, nome: string) {
 
 // ── Componente principal ──────────────────────────────────────
 
+// Senha do painel admin (altere aqui se quiser trocar)
+const ADMIN_PASSWORD = "elyon2026";
+const SESSION_KEY = "elyon_admin_ok";
+
 export const Admin = () => {
   const [session, setSession] = useState<boolean | null>(null);
   const [loginEmail, setLoginEmail] = useState("");
@@ -55,26 +59,23 @@ export const Admin = () => {
   const [loginErr, setLoginErr]     = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
 
-  // Verifica sessão ao montar
+  // Verifica sessão salva no sessionStorage
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(!!data.session);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(!!s);
-    });
-    return () => listener.subscription.unsubscribe();
+    const ok = sessionStorage.getItem(SESSION_KEY) === "1";
+    setSession(ok);
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginErr("");
     setLoginLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
-      password: loginPass,
-    });
-    if (error) setLoginErr(error.message);
+    await new Promise((r) => setTimeout(r, 400)); // simula latência
+    if (loginPass === ADMIN_PASSWORD) {
+      sessionStorage.setItem(SESSION_KEY, "1");
+      setSession(true);
+    } else {
+      setLoginErr("Senha incorreta.");
+    }
     setLoginLoading(false);
   };
 
@@ -181,7 +182,7 @@ const Dashboard = () => {
   const novosHoje  = leads.filter((l) => new Date(l.created_at).toDateString() === new Date().toDateString()).length;
   const fechados   = leads.filter((l) => l.status === "fechado").length;
 
-  const handleLogout = () => supabase.auth.signOut();
+  const handleLogout = () => { sessionStorage.removeItem(SESSION_KEY); window.location.reload(); };
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{
