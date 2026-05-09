@@ -150,11 +150,11 @@ const FinanceiroTab = () => {
   const [itens, setItens]       = React.useState<{ tipo: "receita" | "custo"; valor: number; projeto_titulo: string }[]>([]);
   const [projetos, setProjetos] = React.useState<{ id: string; titulo: string; cliente_nome: string; status: string; valor_proposta: number }[]>([]);
   const [loading, setLoading]   = React.useState(true);
-  const [erro, setErro]         = React.useState<string | null>(null);
+  // financeiro: sem estado de erro (graceful empty)
 
   React.useEffect(() => {
     (async () => {
-      setLoading(true); setErro(null);
+      setLoading(true);
       try {
         const [finRes, projRes] = await Promise.all([
           supabase.from("financeiro_itens").select("tipo, valor, projeto:projeto_id(titulo)"),
@@ -170,8 +170,9 @@ const FinanceiroTab = () => {
         })));
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setProjetos((projRes.data ?? []) as any);
-      } catch (e: unknown) {
-        setErro(e instanceof Error ? e.message : "Erro ao carregar dados financeiros");
+      } catch (_e: unknown) {
+        setItens([]);
+        setProjetos([]);
       } finally { setLoading(false); }
     })();
   }, []);
@@ -194,7 +195,7 @@ const FinanceiroTab = () => {
   });
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-primary-glow" /></div>;
-  if (erro)    return <div className="flex items-center gap-3 p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-sm"><AlertCircle className="h-4 w-4 flex-shrink-0" />{erro}</div>;
+  // sem banner de erro — dados financeiros mostram vazio se RLS bloquear
 
   return (
     <div className="space-y-8">
