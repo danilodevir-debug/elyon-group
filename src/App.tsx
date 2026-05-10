@@ -6,6 +6,7 @@
 //   /admin               → Painel admin — pipeline de leads  (auth)
 //   /admin/projetos      → Painel admin — gestão de projetos (auth)
 //   /admin/chamados      → Painel admin — chamados suporte   (auth)
+//   /admin/estoque       → Painel admin — gestão de estoque  (auth)
 //   /os/:token           → OS do técnico (sem login)
 //   /portal/:token       → Portal do cliente (sem login)
 // ============================================================
@@ -32,6 +33,9 @@ import OrdemServico      from "@/pages/OrdemServico";   // default export
 // ── Camada 04 — Portal cliente + chamados ────────────────────
 import PortalCliente     from "@/pages/PortalCliente";  // default export
 import { AdminChamados } from "@/pages/AdminChamados";
+
+// ── Camada 05 — Estoque ───────────────────────────────────────
+import { AdminEstoque }  from "@/pages/AdminEstoque";
 
 // ── Layout do site principal ──────────────────────────────────
 const SiteLayout = () => (
@@ -65,6 +69,9 @@ export default function App() {
         {/* Camada 04 — admin chamados + portal cliente */}
         <Route path="/admin/chamados"  element={<AdminChamados />} />
         <Route path="/portal/:token"   element={<PortalCliente />} />
+
+        {/* Camada 05 — estoque */}
+        <Route path="/admin/estoque"   element={<AdminEstoque />} />
 
         {/* Fallback — redireciona para home */}
         <Route path="*" element={<Navigate to="/" replace />} />

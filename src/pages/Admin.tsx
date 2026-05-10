@@ -45,6 +45,15 @@ const HomeTab = ({ onNavigate, leads, resumo }: {
       stats: [],
     },
     {
+      title: "Gestão de Estoque",
+      desc: "Controle de materiais, equipamentos e mão de obra com alertas de nível mínimo",
+      href: "/admin/estoque",
+      tab: null as null | "leads" | "financeiro" | "sistema",
+      icon: <Boxes className="h-6 w-6" />,
+      color: "#34d399",
+      stats: [],
+    },
+    {
       title: "Dashboard Financeiro",
       desc: "Receita, custo e margem consolidados de todos os projetos",
       href: null as null | string,
@@ -390,9 +399,10 @@ const SistemaTab = () => {
         </div>
         <div className="divide-y divide-border/40">
           {[
-            { label: "Leads (pipeline)", href: "/admin",          icon: <Activity   className="h-3.5 w-3.5" /> },
-            { label: "Projetos",         href: "/admin/projetos", icon: <FolderOpen className="h-3.5 w-3.5" /> },
-            { label: "Chamados",         href: "/admin/chamados", icon: <TicketCheck className="h-3.5 w-3.5" /> },
+            { label: "Leads (pipeline)", href: "/admin",           icon: <Activity    className="h-3.5 w-3.5" /> },
+            { label: "Projetos",         href: "/admin/projetos",  icon: <FolderOpen  className="h-3.5 w-3.5" /> },
+            { label: "Chamados",         href: "/admin/chamados",  icon: <TicketCheck className="h-3.5 w-3.5" /> },
+            { label: "Estoque",          href: "/admin/estoque",   icon: <Boxes       className="h-3.5 w-3.5" /> },
           ].map((p) => (
             <a key={p.href} href={p.href} className="flex items-center gap-3 px-5 py-3 hover:bg-primary/5 transition-colors group">
               <div className="text-muted-foreground group-hover:text-primary-glow transition-colors">{p.icon}</div>
@@ -418,7 +428,7 @@ import {
   ChevronRight, StickyNote, X, Check, Search,
   BarChart2, Activity, Database, CheckCircle2, AlertCircle,
   DollarSign, TrendingUp, TrendingDown, FolderOpen,
-  TicketCheck, Wrench, ExternalLink, Loader2, ShieldCheck, Home,
+  TicketCheck, Wrench, ExternalLink, Loader2, ShieldCheck, Home, Boxes,
 } from "lucide-react";
 import {
   supabase,
