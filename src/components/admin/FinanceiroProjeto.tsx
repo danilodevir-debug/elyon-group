@@ -49,6 +49,7 @@ interface ItemFinanceiro {
   valor_unitario: number;
   valor_total: number;
   fornecedor: string | null;
+  catalogo_item_id?: string | null;   // vínculo com catálogo/estoque
 }
 
 interface FinanceiroResumo {
@@ -65,6 +66,7 @@ interface NovoItem {
   quantidade: string;
   valor_unitario: string;
   fornecedor: string;
+  catalogoItemId: string | null;   // id em catalogo_itens quando selecionado
 }
 
 // ── Props do componente ───────────────────────────────────────
@@ -191,14 +193,15 @@ export const FinanceiroProjeto = ({
       });
   }, []);
 
-  // Preenche o formulário com um item do catálogo
+  // Preenche o formulário com um item do catálogo e registra o id
   const usarItemCatalogo = (item: CatalogoItem) => {
     setNovoItem((prev) => ({
       ...prev,
-      tipo:          item.tipo,
-      descricao:     item.nome,
+      tipo:           item.tipo,
+      descricao:      item.nome,
       valor_unitario: String(item.valor_unitario),
-      fornecedor:    item.fornecedor ?? "",
+      fornecedor:     item.fornecedor ?? "",
+      catalogoItemId: item.id,          // ← vínculo com estoque
     }));
     setShowCatalogo(false);
     setBuscaCatalogo("");
@@ -206,11 +209,12 @@ export const FinanceiroProjeto = ({
 
   // ── Dados do formulário ───────────────────────────────────
   const novoItemInicial: NovoItem = {
-    tipo: "material",
-    descricao: "",
-    quantidade: "1",
+    tipo:           "material",
+    descricao:      "",
+    quantidade:     "1",
     valor_unitario: "",
-    fornecedor: "",
+    fornecedor:     "",
+    catalogoItemId: null,
   };
   const [novoItem, setNovoItem] = useState<NovoItem>(novoItemInicial);
 
@@ -313,12 +317,13 @@ export const FinanceiroProjeto = ({
       const { data, error } = await supabase
         .from("itens_financeiros")
         .insert({
-          projeto_id: projetoId,
-          tipo: itemTemp.tipo,
-          descricao: itemTemp.descricao,
-          quantidade: itemTemp.quantidade,
-          valor_unitario: itemTemp.valor_unitario,
-          fornecedor: itemTemp.fornecedor,
+          projeto_id:       projetoId,
+          tipo:             itemTemp.tipo,
+          descricao:        itemTemp.descricao,
+          quantidade:       itemTemp.quantidade,
+          valor_unitario:   itemTemp.valor_unitario,
+          fornecedor:       itemTemp.fornecedor,
+          catalogo_item_id: novoItem.catalogoItemId ?? null,
         })
         .select()
         .single();
@@ -329,7 +334,28 @@ export const FinanceiroProjeto = ({
       setItens((prev) =>
         prev.map((i) => (i.id === itemTemp.id ? (data as ItemFinanceiro) : i))
       );
-      // Atualiza o resumo
+
+      // ── Integração com estoque ────────────────────────────────
+      // Se o item veio do catálogo, debita a quantidade do estoque
+      if (novoItem.catalogoItemId) {
+        await Promise.all([
+          // Registra movimento de saída
+          supabase.from("movimentos_estoque").insert({
+            item_id:    novoItem.catalogoItemId,
+            tipo:       "saida",
+            quantidade: itemTemp.quantidade,
+            projeto_id: projetoId,
+            observacao: `Uso no projeto — ${itemTemp.descricao}`,
+          }),
+          // Debita atomicamente via RPC
+          supabase.rpc("debitar_estoque", {
+            p_item_id: novoItem.catalogoItemId,
+            p_qty:     itemTemp.quantidade,
+          }),
+        ]);
+      }
+
+      // Atualiza o resumo financeiro
       await fetchResumo();
     } catch (err) {
       console.error("[FinanceiroProjeto] Erro ao inserir item:", err);
@@ -345,7 +371,7 @@ export const FinanceiroProjeto = ({
   // ── Deletar item ──────────────────────────────────────────
   const handleDeletar = async (itemId: string) => {
     setDeletandoId(itemId);
-    // Guarda o item para reverter se necessário
+    // Guarda o item para reverter se necessário e para estornar estoque
     const itemBackup = itens.find((i) => i.id === itemId);
 
     // Optimistic: remove da lista
@@ -359,6 +385,25 @@ export const FinanceiroProjeto = ({
         .eq("id", itemId);
 
       if (error) throw error;
+
+      // ── Estorno no estoque ────────────────────────────────────
+      // Se o item estava vinculado ao catálogo, devolve a quantidade
+      if (itemBackup?.catalogo_item_id) {
+        await Promise.all([
+          supabase.from("movimentos_estoque").insert({
+            item_id:    itemBackup.catalogo_item_id,
+            tipo:       "entrada",
+            quantidade: itemBackup.quantidade,
+            projeto_id: projetoId,
+            observacao: `Estorno — item removido do projeto (${itemBackup.descricao})`,
+          }),
+          supabase.rpc("creditar_estoque", {
+            p_item_id: itemBackup.catalogo_item_id,
+            p_qty:     itemBackup.quantidade,
+          }),
+        ]);
+      }
+
       await fetchResumo();
     } catch (err) {
       console.error("[FinanceiroProjeto] Erro ao deletar item:", err);
@@ -601,9 +646,16 @@ export const FinanceiroProjeto = ({
                           }`}
                         >
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground truncate">
-                              {item.descricao}
-                            </p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="text-sm font-medium text-foreground truncate">
+                                {item.descricao}
+                              </p>
+                              {item.catalogo_item_id && (
+                                <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-md border border-green-500/30 text-green-400 bg-green-500/10">
+                                  estoque
+                                </span>
+                              )}
+                            </div>
                             <div className="flex flex-wrap items-center gap-2 mt-0.5">
                               {item.fornecedor && (
                                 <span className="text-xs text-muted-foreground/70">

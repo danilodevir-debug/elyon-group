@@ -155,129 +155,181 @@ const HomeTab = ({ onNavigate, leads, resumo }: {
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 const pct = (v: number, t: number) => t > 0 ? `${Math.round((v / t) * 100)}%` : "—";
 
+interface ResumoFinanceiro {
+  projeto_id: string;
+  titulo: string;
+  status: string;
+  tipo: string;
+  valor_proposta: number;
+  custo_real: number;
+  margem: number;
+  margem_pct: number;
+  cliente_nome?: string;
+}
+
+const statusColors: Record<string, string> = {
+  planejamento: "#a78bfa", em_andamento: "#38bdf8",
+  pausado: "#fbbf24", concluido: "#34d399", cancelado: "#f87171",
+};
+
 const FinanceiroTab = () => {
-  const [itens, setItens]       = React.useState<{ tipo: "receita" | "custo"; valor: number; projeto_titulo: string }[]>([]);
-  const [projetos, setProjetos] = React.useState<{ id: string; titulo: string; cliente_nome: string; status: string; valor_proposta: number }[]>([]);
-  const [loading, setLoading]   = React.useState(true);
-  // financeiro: sem estado de erro (graceful empty)
+  const [resumos,  setResumos]  = React.useState<ResumoFinanceiro[]>([]);
+  const [loading,  setLoading]  = React.useState(true);
+  const [filtro,   setFiltro]   = React.useState<"todos" | "concluido" | "em_andamento">("todos");
 
   React.useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const [finRes, projRes] = await Promise.all([
-          supabase.from("financeiro_itens").select("tipo, valor, projeto:projeto_id(titulo)"),
-          supabase.from("projetos").select("id, titulo, cliente_nome, status, valor_proposta").order("created_at", { ascending: false }),
-        ]);
-        if (finRes.error) throw finRes.error;
-        if (projRes.error) throw projRes.error;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setItens((finRes.data ?? []).map((i: any) => ({
-          tipo: i.tipo as "receita" | "custo",
-          valor: Number(i.valor),
-          projeto_titulo: i.projeto?.titulo ?? "—",
-        })));
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setProjetos((projRes.data ?? []) as any);
-      } catch (_e: unknown) {
-        setItens([]);
-        setProjetos([]);
+        // projeto_financeiro_resumo já agrega itens_financeiros por projeto
+        const { data } = await supabase
+          .from("projeto_financeiro_resumo")
+          .select("projeto_id, titulo, status, tipo, valor_proposta, custo_real, margem, margem_pct");
+
+        // Busca cliente_nome separado para exibir na tabela
+        const { data: projData } = await supabase
+          .from("projetos")
+          .select("id, cliente_nome");
+
+        const clienteMap: Record<string, string> = {};
+        (projData ?? []).forEach((p: { id: string; cliente_nome: string }) => { clienteMap[p.id] = p.cliente_nome; });
+
+        setResumos(
+          (data ?? []).map((r: ResumoFinanceiro) => ({
+            ...r,
+            cliente_nome: clienteMap[r.projeto_id] ?? "—",
+          }))
+        );
+      } catch (_e) {
+        setResumos([]);
       } finally { setLoading(false); }
     })();
   }, []);
 
-  const receita = itens.filter((i) => i.tipo === "receita").reduce((s, i) => s + i.valor, 0);
-  const custo   = itens.filter((i) => i.tipo === "custo").reduce((s, i) => s + i.valor, 0);
-  const margem  = receita - custo;
-  const totalProposta = projetos.reduce((s, p) => s + Number(p.valor_proposta ?? 0), 0);
+  const filtrados = resumos.filter((r) =>
+    filtro === "todos" ? true : r.status === filtro
+  );
 
-  const statusColors: Record<string, string> = {
-    planejamento: "#a78bfa", em_andamento: "#38bdf8",
-    pausado: "#fbbf24", concluido: "#34d399", cancelado: "#f87171",
-  };
-
-  const porProjeto = projetos.map((p) => {
-    const pItens = itens.filter((i) => i.projeto_titulo === p.titulo);
-    const r = pItens.filter((i) => i.tipo === "receita").reduce((s, i) => s + i.valor, 0);
-    const c = pItens.filter((i) => i.tipo === "custo").reduce((s, i) => s + i.valor, 0);
-    return { ...p, receita: r, custo: c, margem: r - c };
-  });
+  // Métricas consolidadas (apenas projetos concluídos são "receita realizada")
+  const concluidos     = resumos.filter((r) => r.status === "concluido");
+  const receitaReal    = concluidos.reduce((s, r) => s + Number(r.valor_proposta), 0);
+  const custoReal      = concluidos.reduce((s, r) => s + Number(r.custo_real),     0);
+  const margemReal     = receitaReal - custoReal;
+  const totalProposta  = resumos.reduce((s, r) => s + Number(r.valor_proposta), 0);
 
   if (loading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-primary-glow" /></div>;
-  // sem banner de erro — dados financeiros mostram vazio se RLS bloquear
 
   return (
     <div className="space-y-8">
+
+      {/* Métricas consolidadas */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Receita total",     value: fmt(receita),      color: "#34d399", icon: <TrendingUp   className="h-4 w-4" /> },
-          { label: "Custo total",       value: fmt(custo),         color: "#f87171", icon: <TrendingDown className="h-4 w-4" /> },
-          { label: "Margem bruta",      value: fmt(margem),        color: margem >= 0 ? "#a78bfa" : "#f87171", icon: <DollarSign className="h-4 w-4" /> },
-          { label: "Propostas (total)", value: fmt(totalProposta), color: "#fbbf24", icon: <BarChart2   className="h-4 w-4" /> },
+          { label: "Receita realizada",  value: fmt(receitaReal),   color: "#34d399", icon: <TrendingUp   className="h-4 w-4" />, sub: "Projetos concluídos" },
+          { label: "Custo real total",   value: fmt(custoReal),     color: "#f87171", icon: <TrendingDown className="h-4 w-4" />, sub: "Itens lançados" },
+          { label: "Margem bruta",       value: fmt(margemReal),    color: margemReal >= 0 ? "#a78bfa" : "#f87171", icon: <DollarSign className="h-4 w-4" />, sub: receitaReal > 0 ? pct(margemReal, receitaReal) : "—" },
+          { label: "Carteira total",     value: fmt(totalProposta), color: "#fbbf24", icon: <BarChart2   className="h-4 w-4" />, sub: `${resumos.length} projeto(s)` },
         ].map((k) => (
           <div key={k.label} className="glass-card rounded-xl p-4 flex items-start gap-3">
             <div className="p-2 rounded-lg mt-0.5" style={{ background: `${k.color}18`, color: k.color }}>{k.icon}</div>
             <div>
               <div className="text-xl font-black" style={{ color: k.color }}>{k.value}</div>
               <div className="text-xs text-muted-foreground mt-0.5 uppercase tracking-wider">{k.label}</div>
+              <div className="text-xs text-muted-foreground/60 mt-0.5">{k.sub}</div>
             </div>
           </div>
         ))}
       </div>
 
-      {receita > 0 && (
+      {/* Barra margem */}
+      {receitaReal > 0 && (
         <div className="glass-card rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Margem bruta</span>
-            <span className="text-sm font-bold" style={{ color: margem >= 0 ? "#a78bfa" : "#f87171" }}>{pct(margem, receita)}</span>
+            <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Margem bruta — projetos concluídos</span>
+            <span className="text-sm font-bold" style={{ color: margemReal >= 0 ? "#a78bfa" : "#f87171" }}>{pct(margemReal, receitaReal)}</span>
           </div>
           <div className="h-2 rounded-full bg-card/60 overflow-hidden">
-            <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, (margem / receita) * 100))}%`, background: margem >= 0 ? "#a78bfa" : "#f87171" }} />
+            <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, Math.max(0, (margemReal / receitaReal) * 100))}%`, background: margemReal >= 0 ? "#a78bfa" : "#f87171" }} />
           </div>
           <div className="flex justify-between text-xs text-muted-foreground mt-1.5">
-            <span>Custo: {pct(custo, receita)}</span>
-            <span>Receita: {fmt(receita)}</span>
+            <span>Custo: {pct(custoReal, receitaReal)}</span>
+            <span>Receita: {fmt(receitaReal)}</span>
           </div>
         </div>
       )}
 
+      {/* Tabela de projetos */}
       <div className="glass-card rounded-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between">
-          <div className="flex items-center gap-2"><FolderOpen className="h-4 w-4 text-primary-glow" /><span className="font-semibold text-sm">Projetos — breakdown financeiro</span></div>
-          <span className="text-xs text-muted-foreground">{projetos.length} projeto(s)</span>
+        <div className="px-5 py-4 border-b border-border/60 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <FolderOpen className="h-4 w-4 text-primary-glow" />
+            <span className="font-semibold text-sm">Breakdown por projeto</span>
+          </div>
+          {/* Filtros rápidos */}
+          <div className="flex gap-1.5">
+            {[
+              { v: "todos",        l: "Todos"       },
+              { v: "em_andamento", l: "Em andamento" },
+              { v: "concluido",    l: "Concluídos"  },
+            ].map((opt) => (
+              <button
+                key={opt.v}
+                onClick={() => setFiltro(opt.v as typeof filtro)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                  filtro === opt.v ? "border-primary/40 text-primary-glow bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {opt.l}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border/50">
-                {["Projeto", "Cliente", "Status", "Receita", "Custo", "Margem", "Proposta"].map((h) => (
+                {["Projeto", "Cliente", "Status", "Proposta", "Custo Real", "Margem", "%"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {porProjeto.map((p, i) => {
-                const cor  = statusColors[p.status] ?? "#94a3b8";
-                const mPct = p.receita > 0 ? Math.round((p.margem / p.receita) * 100) : null;
+              {filtrados.map((p, i) => {
+                const cor    = statusColors[p.status] ?? "#94a3b8";
+                const mColor = Number(p.margem_pct) >= 20 ? "#34d399" : Number(p.margem_pct) >= 5 ? "#fbbf24" : "#f87171";
                 return (
-                  <tr key={p.id} className={`border-b border-border/30 hover:bg-primary/5 transition-colors ${i % 2 !== 0 ? "bg-card/20" : ""}`}>
-                    <td className="px-4 py-3 font-medium max-w-[160px] truncate">{p.titulo}</td>
+                  <tr key={p.projeto_id} className={`border-b border-border/30 hover:bg-primary/5 transition-colors ${i % 2 !== 0 ? "bg-card/20" : ""}`}>
+                    <td className="px-4 py-3 font-medium max-w-[160px]">
+                      <p className="truncate">{p.titulo}</p>
+                      {p.tipo !== "projeto_completo" && (
+                        <span className="text-[10px] text-muted-foreground/60 capitalize">{p.tipo.replace("_", " ")}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">{p.cliente_nome}</td>
-                    <td className="px-4 py-3"><span className="text-xs font-semibold px-2 py-0.5 rounded-full border" style={{ color: cor, borderColor: `${cor}40`, background: `${cor}12` }}>{p.status.replace("_", " ")}</span></td>
-                    <td className="px-4 py-3 font-mono text-xs text-green-400">{p.receita > 0 ? fmt(p.receita) : "—"}</td>
-                    <td className="px-4 py-3 font-mono text-xs text-red-400">{p.custo   > 0 ? fmt(p.custo)   : "—"}</td>
-                    <td className="px-4 py-3 font-mono text-xs" style={{ color: p.margem >= 0 ? "#a78bfa" : "#f87171" }}>
-                      {p.receita > 0 ? `${fmt(p.margem)}${mPct !== null ? ` (${mPct}%)` : ""}` : "—"}
+                    <td className="px-4 py-3">
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full border" style={{ color: cor, borderColor: `${cor}40`, background: `${cor}12` }}>
+                        {p.status.replace("_", " ")}
+                      </span>
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-accent">{Number(p.valor_proposta) > 0 ? fmt(Number(p.valor_proposta)) : "—"}</td>
+                    <td className="px-4 py-3 font-mono text-xs text-red-400">{Number(p.custo_real) > 0 ? fmt(Number(p.custo_real)) : "—"}</td>
+                    <td className="px-4 py-3 font-mono text-xs" style={{ color: mColor }}>
+                      {Number(p.custo_real) > 0 ? fmt(Number(p.margem)) : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-bold" style={{ color: mColor }}>
+                      {p.margem_pct != null && Number(p.custo_real) > 0 ? `${Number(p.margem_pct).toFixed(1)}%` : "—"}
+                    </td>
                   </tr>
                 );
               })}
-              {projetos.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground text-sm">Nenhum projeto cadastrado ainda.</td></tr>}
+              {filtrados.length === 0 && (
+                <tr><td colSpan={7} className="px-4 py-10 text-center text-muted-foreground text-sm">Nenhum projeto encontrado.</td></tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
       <div className="text-right">
         <a href="/admin/projetos" className="inline-flex items-center gap-1.5 text-xs text-primary-glow hover:underline">
           <ExternalLink className="h-3 w-3" /> Abrir gestão de projetos
