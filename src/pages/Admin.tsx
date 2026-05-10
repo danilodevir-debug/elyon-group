@@ -460,10 +460,6 @@ function whatsappLink(phone: string, nome: string) {
 
 // ── Componente principal ──────────────────────────────────────
 
-// Senha do painel admin (altere aqui se quiser trocar)
-const ADMIN_PASSWORD = "elyon2026";
-const SESSION_KEY = "elyon_admin_ok";
-
 export const Admin = () => {
   const [session, setSession] = useState<boolean | null>(null);
   const [loginEmail, setLoginEmail] = useState("");
@@ -471,22 +467,27 @@ export const Admin = () => {
   const [loginErr, setLoginErr]     = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
 
-  // Verifica sessão salva no sessionStorage
+  // Verifica sessão Supabase ao montar (e escuta mudanças de auth)
   useEffect(() => {
-    const ok = sessionStorage.getItem(SESSION_KEY) === "1";
-    setSession(ok);
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(!!data.session);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(!!s);
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginErr("");
     setLoginLoading(true);
-    await new Promise((r) => setTimeout(r, 400)); // simula latência
-    if (loginPass === ADMIN_PASSWORD) {
-      sessionStorage.setItem(SESSION_KEY, "1");
-      setSession(true);
-    } else {
-      setLoginErr("Senha incorreta.");
+    const { error } = await supabase.auth.signInWithPassword({
+      email:    loginEmail.trim(),
+      password: loginPass,
+    });
+    if (error) {
+      setLoginErr("E-mail ou senha incorretos.");
     }
     setLoginLoading(false);
   };
@@ -595,7 +596,7 @@ const Dashboard = () => {
   const novosHoje  = leads.filter((l) => new Date(l.created_at).toDateString() === new Date().toDateString()).length;
   const fechados   = leads.filter((l) => l.status === "fechado").length;
 
-  const handleLogout = () => { sessionStorage.removeItem(SESSION_KEY); window.location.reload(); };
+  const handleLogout = async () => { await supabase.auth.signOut(); };
 
   return (
     <div className="min-h-screen bg-background text-foreground" style={{
@@ -893,6 +894,17 @@ const LeadDrawer = ({ lead, onClose, onStatusChange }: {
               <MessageCircle className="h-4 w-4" />
               Abrir WhatsApp
             </a>
+
+            {/* ── Converter lead fechado em projeto ───────────── */}
+            {lead.status === "fechado" && (
+              <a
+                href={`/admin/projetos?novo=1&lead_id=${lead.id}&nome=${encodeURIComponent(lead.nome)}&tel=${encodeURIComponent(lead.telefone)}&email=${encodeURIComponent(lead.email)}`}
+                className="mt-2 w-full inline-flex items-center justify-center gap-2 py-3 rounded-xl border border-primary/40 bg-primary/10 text-primary-glow font-bold text-sm hover:bg-primary/20 transition-all hover:-translate-y-0.5"
+              >
+                <FolderOpen className="h-4 w-4" />
+                Abrir como Projeto
+              </a>
+            )}
           </div>
 
           {/* Serviço & Mensagem */}

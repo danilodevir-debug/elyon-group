@@ -204,63 +204,12 @@ function semResposta(c: Chamado): boolean {
 }
 
 
-// ── Constantes de auth (mesma chave usada em Admin.tsx) ──────
-const ADMIN_PASSWORD = "elyon2026";
-const SESSION_KEY    = "elyon_admin_ok";
-
-// ── Tela de login ─────────────────────────────────────────────
-const TelaLogin = () => {
-  const [pass, setPass]       = React.useState("");
-  const [err, setErr]         = React.useState("");
-  const [loading, setLoading] = React.useState(false);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr("");
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 400));
-    if (pass === ADMIN_PASSWORD) {
-      sessionStorage.setItem(SESSION_KEY, "1");
-      window.location.reload();
-    } else {
-      setErr("Senha incorreta.");
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <form
-        onSubmit={handleLogin}
-        className="bg-card border border-border rounded-xl p-8 w-full max-w-sm shadow-lg space-y-4"
-      >
-        <h2 className="text-xl font-bold text-foreground text-center">Painel Admin</h2>
-        <p className="text-sm text-muted-foreground text-center">Chamados de Suporte</p>
-        <input
-          type="password"
-          placeholder="Senha"
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          autoFocus
-        />
-        {err && <p className="text-red-500 text-sm text-center">{err}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-primary text-primary-foreground py-2 rounded-lg font-semibold text-sm hover:opacity-90 disabled:opacity-50 transition"
-        >
-          {loading ? "Verificando…" : "Entrar"}
-        </button>
-      </form>
-    </div>
-  );
-};
+// (auth via Supabase — sem senhas hardcoded)
 
 // ── Componente principal ──────────────────────────────────────
 
 export const AdminChamados = () => {
-  const [session, setSession] = useState(false);
+  const [session, setSession] = useState<boolean | null>(null);
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [loading, setLoading]   = useState(true);
   const [erro, setErro]         = useState<string | null>(null);
@@ -286,16 +235,28 @@ export const AdminChamados = () => {
     }
   }, []);
 
-  // Verifica sessão admin ao montar
+  // Verifica sessão Supabase ao montar
   useEffect(() => {
-    const ok = sessionStorage.getItem(SESSION_KEY) === "1";
-    setSession(ok);
+    supabase.auth.getSession().then(({ data }) => setSession(!!data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => setSession(!!s));
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  // Guard: redireciona para login se não autenticado
-  if (!session) return <TelaLogin />;
+  // Guards de sessão
+  if (session === null) return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="h-6 w-6 rounded-full border-2 border-primary-glow/40 border-t-primary-glow animate-spin" />
+    </div>
+  );
+  if (!session) return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <p className="text-muted-foreground text-sm">
+        Faça login em <a href="/admin" className="text-primary-glow underline">/admin</a> para acessar os chamados.
+      </p>
+    </div>
+  );
 
   // Métricas de cabeçalho
   const totalAbertos = chamados.filter((c) => c.status === "aberto").length;
@@ -420,7 +381,7 @@ export const AdminChamados = () => {
             </button>
             {/* Logout */}
             <button
-              onClick={() => { sessionStorage.removeItem(SESSION_KEY); window.location.reload(); }}
+              onClick={() => supabase.auth.signOut()}
               className="p-2 rounded-lg border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/40 transition-colors"
               title="Sair"
             >

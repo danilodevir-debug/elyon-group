@@ -21,12 +21,23 @@ import {
   ChevronUp,
   X,
   Check,
+  BookOpen,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 // ── Tipos ─────────────────────────────────────────────────────
 
 type TipoItem = "material" | "mao_de_obra" | "equipamento" | "outro";
+
+// Item vindo do catálogo centralizado
+interface CatalogoItem {
+  id: string;
+  tipo: TipoItem;
+  nome: string;
+  valor_unitario: number;
+  unidade: string;
+  fornecedor: string | null;
+}
 
 interface ItemFinanceiro {
   id: string;
@@ -158,6 +169,40 @@ export const FinanceiroProjeto = ({
 
   // Ref para scroll ao formulário
   const formRef = useRef<HTMLDivElement>(null);
+
+  // ── Catálogo de itens ─────────────────────────────────────
+  const [catalogo, setCatalogo]           = useState<CatalogoItem[]>([]);
+  const [buscaCatalogo, setBuscaCatalogo] = useState("");
+  const [showCatalogo, setShowCatalogo]   = useState(false);
+
+  const catalogoFiltrado = catalogo.filter((c) =>
+    !buscaCatalogo || c.nome.toLowerCase().includes(buscaCatalogo.toLowerCase())
+  );
+
+  // Carrega catálogo (uma vez, sem filtro de projeto)
+  useEffect(() => {
+    supabase
+      .from("catalogo_itens")
+      .select("id, tipo, nome, valor_unitario, unidade, fornecedor")
+      .eq("ativo", true)
+      .order("nome")
+      .then(({ data }) => {
+        if (data) setCatalogo(data as CatalogoItem[]);
+      });
+  }, []);
+
+  // Preenche o formulário com um item do catálogo
+  const usarItemCatalogo = (item: CatalogoItem) => {
+    setNovoItem((prev) => ({
+      ...prev,
+      tipo:          item.tipo,
+      descricao:     item.nome,
+      valor_unitario: String(item.valor_unitario),
+      fornecedor:    item.fornecedor ?? "",
+    }));
+    setShowCatalogo(false);
+    setBuscaCatalogo("");
+  };
 
   // ── Dados do formulário ───────────────────────────────────
   const novoItemInicial: NovoItem = {
@@ -630,13 +675,80 @@ export const FinanceiroProjeto = ({
           <div className="glass-card glow-border rounded-xl p-5 space-y-4">
             <div className="flex items-center justify-between mb-1">
               <h4 className="text-sm font-bold text-foreground">Novo Item de Custo</h4>
-              <button
-                onClick={() => { setShowForm(false); setErroForm(null); }}
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                {/* Botão abre/fecha catálogo */}
+                <button
+                  type="button"
+                  onClick={() => { setShowCatalogo((v) => !v); setBuscaCatalogo(""); }}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                    showCatalogo
+                      ? "border-primary/50 text-primary-glow bg-primary/10"
+                      : "border-border text-muted-foreground hover:text-foreground hover:border-border/80"
+                  }`}
+                >
+                  <BookOpen className="h-3 w-3" />
+                  Catálogo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowForm(false); setErroForm(null); setShowCatalogo(false); }}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
+
+            {/* ── Picker do catálogo ── */}
+            {showCatalogo && (
+              <div className="rounded-xl border border-primary/20 bg-background/80 overflow-hidden">
+                <div className="px-3 py-2 border-b border-border/40">
+                  <input
+                    type="text"
+                    value={buscaCatalogo}
+                    onChange={(e) => setBuscaCatalogo(e.target.value)}
+                    placeholder="Buscar no catálogo..."
+                    autoFocus
+                    className="w-full text-xs bg-transparent outline-none text-foreground placeholder:text-muted-foreground/50"
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto divide-y divide-border/20">
+                  {catalogoFiltrado.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-muted-foreground/60 text-center">
+                      {catalogo.length === 0 ? "Catálogo vazio — execute schema-catalogo.sql" : "Nenhum item encontrado"}
+                    </p>
+                  ) : (
+                    catalogoFiltrado.map((item) => {
+                      const cfg = TIPO_CONFIG[item.tipo];
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => usarItemCatalogo(item)}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-primary/8 transition-colors text-left"
+                        >
+                          <span className="flex-shrink-0 flex items-center justify-center h-6 w-6 rounded-md" style={{ background: cfg.bg, color: cfg.color }}>
+                            {cfg.icon}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-foreground truncate">{item.nome}</p>
+                            {item.fornecedor && (
+                              <p className="text-xs text-muted-foreground/60 truncate">{item.fornecedor}</p>
+                            )}
+                          </div>
+                          <div className="flex-shrink-0 text-right">
+                            <p className="text-xs font-bold" style={{ color: cfg.color }}>
+                              {formatBRL(item.valor_unitario)}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground">{item.unidade}</p>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleAdicionarItem} className="space-y-4">
               {/* Tipo + Descrição */}

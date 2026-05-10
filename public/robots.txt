@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# Painéis internos — sem indexação
+Disallow: /admin
+Disallow: /admin/
+Disallow: /admin/projetos
+Disallow: /admin/chamados
+Disallow: /os/
+Disallow: /portal/
+
+Sitemap: https://elyongroup.com.br/sitemap.xml

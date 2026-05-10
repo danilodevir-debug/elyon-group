@@ -36,6 +36,12 @@ export type OSStatus =
   | "concluida"
   | "cancelada";
 
+export type ProjetoTipo =
+  | "projeto_completo"
+  | "servico_avulso"
+  | "manutencao"
+  | "garantia";
+
 export interface Projeto {
   id: string;
   created_at: string;
@@ -44,6 +50,8 @@ export interface Projeto {
   titulo: string;
   descricao: string | null;
   status: ProjetoStatus;
+  tipo: ProjetoTipo;
+  projeto_origem_id: string | null;
   data_inicio: string | null;
   data_previsao_conclusao: string | null;
   data_conclusao: string | null;
@@ -80,7 +88,18 @@ export interface CreateProjetoData {
   notas?: string;
   lead_id?: string | null;
   status?: ProjetoStatus;
+  tipo?: ProjetoTipo;
+  projeto_origem_id?: string | null;
 }
+
+// ── Labels e cores de tipo ────────────────────────────────────
+
+const TIPO_PROJETO: { value: ProjetoTipo; label: string; color: string }[] = [
+  { value: "projeto_completo", label: "Projeto completo",  color: "#a78bfa" },
+  { value: "servico_avulso",   label: "Serviço avulso",    color: "#38bdf8" },
+  { value: "manutencao",       label: "Manutenção",         color: "#fbbf24" },
+  { value: "garantia",         label: "Garantia",           color: "#34d399" },
+];
 
 export interface CreateOSData {
   projeto_id: string;
@@ -227,69 +246,48 @@ function formatCurrency(val: number | null | undefined): string {
   }).format(val);
 }
 
-// ── Constantes de auth ────────────────────────────────────────
-const ADMIN_PASSWORD = "elyon2026";
-const SESSION_KEY    = "elyon_admin_ok";
+// ── Tela de carregamento de sessão ───────────────────────────
+const TelaCarregando = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="h-6 w-6 rounded-full border-2 border-primary-glow/40 border-t-primary-glow animate-spin" />
+  </div>
+);
 
-const TelaLoginProjetos = () => {
-  const [pass, setPass]       = React.useState("");
-  const [err, setErr]         = React.useState("");
-  const [loading, setLoading] = React.useState(false);
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr("");
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 400));
-    if (pass === ADMIN_PASSWORD) {
-      sessionStorage.setItem(SESSION_KEY, "1");
-      window.location.reload();
-    } else {
-      setErr("Senha incorreta.");
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <form
-        onSubmit={handleLogin}
-        className="bg-card border border-border rounded-xl p-8 w-full max-w-sm shadow-lg space-y-4"
-      >
-        <h2 className="text-xl font-bold text-foreground text-center">Painel Admin</h2>
-        <p className="text-sm text-muted-foreground text-center">Gestão de Projetos</p>
-        <input
-          type="password"
-          placeholder="Senha"
-          value={pass}
-          onChange={(e) => setPass(e.target.value)}
-          className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          autoFocus
-        />
-        {err && <p className="text-red-500 text-sm text-center">{err}</p>}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-primary text-primary-foreground py-2 rounded-lg font-semibold text-sm hover:opacity-90 disabled:opacity-50 transition"
-        >
-          {loading ? "Verificando…" : "Entrar"}
-        </button>
-      </form>
+// ── Tela de acesso negado (não logado) ───────────────────────
+const TelaAcessoNegado = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="text-center space-y-4 max-w-sm mx-4">
+      <p className="text-muted-foreground text-sm">
+        Faça login em <a href="/admin" className="text-primary-glow underline">/admin</a> para acessar os projetos.
+      </p>
     </div>
-  );
-};
+  </div>
+);
 
 // ── Componente principal ──────────────────────────────────────
 
+// ── Tipo para pré-preenchimento via URL params ────────────────
+interface ProjetoPreFill {
+  leadId:    string | null;
+  origemId:  string | null;   // projeto que originou o serviço avulso
+  nome:      string;
+  tel:       string;
+  email:     string;
+  tipo:      ProjetoTipo;
+}
+
 export const Projetos = () => {
-  const [session, setSession]         = useState(false);
+  const [session, setSession]         = useState<boolean | null>(null);
   const [projetos, setProjetos]       = useState<Projeto[]>([]);
   const [loading, setLoading]         = useState(true);
   const [search, setSearch]           = useState("");
   const [filtroStatus, setFiltroStatus] = useState<ProjetoStatus | "todos">("todos");
+  const [filtroTipo, setFiltroTipo]     = useState<ProjetoTipo | "todos">("todos");
   const [projetoSelecionado, setProjetoSelecionado] = useState<Projeto | null>(null);
   const [showNovoModal, setShowNovoModal] = useState(false);
   const [leads, setLeads]             = useState<Lead[]>([]);
+  // Dados vindos do link "Abrir como Projeto" no painel de leads
+  const [preFill, setPreFill]         = useState<ProjetoPreFill | null>(null);
 
   // Carrega projetos e leads disponíveis
   const load = useCallback(async () => {
@@ -306,16 +304,38 @@ export const Projetos = () => {
     }
   }, []);
 
-  // Verifica sessão admin ao montar
+  // Verifica sessão Supabase ao montar
   useEffect(() => {
-    const ok = sessionStorage.getItem(SESSION_KEY) === "1";
-    setSession(ok);
+    supabase.auth.getSession().then(({ data }) => setSession(!!data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => setSession(!!s));
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // Lê params do link "Abrir como Projeto" / "Serviço Avulso" vindo de outros painéis
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("novo") === "1") {
+      const rawTipo = params.get("tipo") as ProjetoTipo | null;
+      const tiposValidos: ProjetoTipo[] = ["projeto_completo", "servico_avulso", "manutencao", "garantia"];
+      setPreFill({
+        leadId:   params.get("lead_id"),
+        origemId: params.get("origem_id"),
+        nome:     decodeURIComponent(params.get("nome")  ?? ""),
+        tel:      decodeURIComponent(params.get("tel")   ?? ""),
+        email:    decodeURIComponent(params.get("email") ?? ""),
+        tipo:     rawTipo && tiposValidos.includes(rawTipo) ? rawTipo : "projeto_completo",
+      });
+      setShowNovoModal(true);
+      // Limpa a URL sem recarregar a página
+      window.history.replaceState({}, "", "/admin/projetos");
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  // Guard: redireciona para login se não autenticado
-  if (!session) return <TelaLoginProjetos />;
+  // Guards de sessão
+  if (session === null) return <TelaCarregando />;
+  if (!session)         return <TelaAcessoNegado />;
 
   // Filtragem
   const filtered = projetos.filter((p) => {
@@ -323,9 +343,9 @@ export const Projetos = () => {
       !search ||
       p.titulo.toLowerCase().includes(search.toLowerCase()) ||
       p.cliente_nome.toLowerCase().includes(search.toLowerCase());
-    const matchStatus =
-      filtroStatus === "todos" || p.status === filtroStatus;
-    return matchSearch && matchStatus;
+    const matchStatus = filtroStatus === "todos" || p.status === filtroStatus;
+    const matchTipo   = filtroTipo   === "todos" || p.tipo   === filtroTipo;
+    return matchSearch && matchStatus && matchTipo;
   });
 
   // Métricas
@@ -392,7 +412,7 @@ export const Projetos = () => {
               <span className="hidden sm:inline">Novo Projeto</span>
             </button>
             <button
-              onClick={() => { sessionStorage.removeItem(SESSION_KEY); window.location.reload(); }}
+              onClick={() => supabase.auth.signOut()}
               className="p-2 rounded-lg border border-border text-muted-foreground hover:text-red-400 hover:border-red-400/40 transition-colors"
               title="Sair"
             >
@@ -470,6 +490,24 @@ export const Projetos = () => {
               </button>
             ))}
           </div>
+
+          {/* Filtro de tipo */}
+          <div className="flex gap-1.5 flex-wrap">
+            {[{ value: "todos", label: "Todos os tipos", color: "#a78bfa" }, ...TIPO_PROJETO].map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setFiltroTipo(opt.value as ProjetoTipo | "todos")}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all"
+                style={
+                  filtroTipo === opt.value
+                    ? { background: `${opt.color}20`, borderColor: `${opt.color}50`, color: opt.color }
+                    : { borderColor: "rgba(255,255,255,0.08)", color: "#64748b" }
+                }
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </motion.div>
 
         {/* ── Grid de Cards ── */}
@@ -515,8 +553,9 @@ export const Projetos = () => {
         {showNovoModal && (
           <NovoProjetoModal
             leads={leads}
-            onClose={() => setShowNovoModal(false)}
+            onClose={() => { setShowNovoModal(false); setPreFill(null); }}
             onCriado={handleProjetoCriado}
+            preFill={preFill}
           />
         )}
       </AnimatePresence>
@@ -551,8 +590,9 @@ const ProjetoCard = ({
 }) => {
   const st = getStatusProjeto(projeto.status);
   const StatusIcon = st.icon;
+  const tp = TIPO_PROJETO.find((t) => t.value === projeto.tipo);
 
-  // Contador de OS (é carregado no drawer; aqui mostramos placeholder)
+  // Próximo status disponível para avanço rápido
   const nextStatus = STATUS_PROJETO[
     STATUS_PROJETO.findIndex((s) => s.value === projeto.status) + 1
   ];
@@ -573,9 +613,18 @@ const ProjetoCard = ({
           <h3 className="font-bold text-sm leading-tight truncate group-hover:text-primary-glow transition-colors">
             {projeto.titulo}
           </h3>
-          <div className="flex items-center gap-1.5 mt-1">
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
             <Building2 className="h-3 w-3 text-muted-foreground flex-shrink-0" />
             <span className="text-xs text-muted-foreground truncate">{projeto.cliente_nome}</span>
+            {/* Badge de tipo (só mostra se não for projeto_completo) */}
+            {tp && tp.value !== "projeto_completo" && (
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-md border"
+                style={{ color: tp.color, borderColor: `${tp.color}35`, background: `${tp.color}12` }}
+              >
+                {tp.label}
+              </span>
+            )}
           </div>
         </div>
         {/* Badge de status */}
@@ -648,26 +697,30 @@ const NovoProjetoModal = ({
   leads,
   onClose,
   onCriado,
+  preFill,
 }: {
   leads: Lead[];
   onClose: () => void;
   onCriado: () => void;
+  preFill?: ProjetoPreFill | null;
 }) => {
   const [saving, setSaving] = useState(false);
   const [erro, setErro]     = useState("");
   const [form, setForm]     = useState<CreateProjetoData>({
-    titulo: "",
-    cliente_nome: "",
-    cliente_telefone: "",
-    endereco: "",
-    descricao: "",
-    data_inicio: "",
+    titulo:                  "",
+    cliente_nome:            preFill?.nome            ?? "",
+    cliente_telefone:        preFill?.tel             ?? "",
+    endereco:                "",
+    descricao:               "",
+    data_inicio:             "",
     data_previsao_conclusao: "",
-    responsavel_nome: "",
-    valor_proposta: null,
-    notas: "",
-    lead_id: null,
-    status: "planejamento",
+    responsavel_nome:        "",
+    valor_proposta:          null,
+    notas:                   preFill?.email ? `E-mail do lead: ${preFill.email}` : "",
+    lead_id:                 preFill?.leadId          ?? null,
+    status:                  "planejamento",
+    tipo:                    preFill?.tipo            ?? "projeto_completo",
+    projeto_origem_id:       preFill?.origemId        ?? null,
   });
 
   const set = (key: keyof CreateProjetoData, value: unknown) =>
@@ -684,15 +737,17 @@ const NovoProjetoModal = ({
     try {
       await createProjeto({
         ...form,
-        valor_proposta: form.valor_proposta ?? 0,
-        lead_id: form.lead_id || null,
-        data_inicio: form.data_inicio || undefined,
+        valor_proposta:          form.valor_proposta ?? 0,
+        lead_id:                 form.lead_id || null,
+        projeto_origem_id:       form.projeto_origem_id || null,
+        tipo:                    form.tipo ?? "projeto_completo",
+        data_inicio:             form.data_inicio || undefined,
         data_previsao_conclusao: form.data_previsao_conclusao || undefined,
-        responsavel_nome: form.responsavel_nome || undefined,
-        descricao: form.descricao || undefined,
-        cliente_telefone: form.cliente_telefone || undefined,
-        endereco: form.endereco || undefined,
-        notas: form.notas || undefined,
+        responsavel_nome:        form.responsavel_nome || undefined,
+        descricao:               form.descricao || undefined,
+        cliente_telefone:        form.cliente_telefone || undefined,
+        endereco:                form.endereco || undefined,
+        notas:                   form.notas || undefined,
       });
       onCriado();
     } catch (err) {
@@ -737,7 +792,11 @@ const NovoProjetoModal = ({
             </div>
             <div>
               <h2 className="font-bold text-base">Novo Projeto</h2>
-              <p className="text-xs text-muted-foreground">Preencha os dados do projeto</p>
+              <p className="text-xs text-muted-foreground">
+                {preFill?.nome
+                  ? `Convertendo lead: ${preFill.nome}`
+                  : "Preencha os dados do projeto"}
+              </p>
             </div>
           </div>
           <button
@@ -751,6 +810,35 @@ const NovoProjetoModal = ({
         {/* Formulário */}
         <form onSubmit={handleSubmit} className="overflow-y-auto max-h-[75vh]">
           <div className="px-6 py-5 space-y-5">
+
+            {/* Banner: lead vinculado automaticamente */}
+            {preFill?.leadId && (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-primary/8 border border-primary/25">
+                <Link2 className="h-4 w-4 text-primary-glow flex-shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-primary-glow">Lead vinculado automaticamente</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Os dados do cliente foram preenchidos com base no lead <strong>{preFill.nome}</strong>.
+                    Ajuste o título e as datas antes de salvar.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Banner: projeto origem vinculado (serviço avulso / manutenção) */}
+            {preFill?.origemId && (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-green-500/8 border border-green-500/25">
+                <Wrench className="h-4 w-4 text-green-400 flex-shrink-0" />
+                <div>
+                  <p className="text-xs font-semibold text-green-400">Projeto origem vinculado</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Este novo serviço ficará rastreável ao histórico do cliente <strong>{preFill.nome}</strong>.
+                    Defina o título e as datas do novo atendimento.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Seção: Dados básicos */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
@@ -819,8 +907,36 @@ const NovoProjetoModal = ({
               </div>
             )}
 
+            {/* Seção: Tipo e status */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Tipo do projeto</label>
+                <select
+                  value={form.tipo}
+                  onChange={(e) => set("tipo", e.target.value as ProjetoTipo)}
+                  className={inputCls}
+                >
+                  {TIPO_PROJETO.map((t) => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Status inicial</label>
+                <select
+                  value={form.status}
+                  onChange={(e) => set("status", e.target.value as ProjetoStatus)}
+                  className={inputCls}
+                >
+                  {STATUS_PROJETO.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {/* Seção: Datas e responsável */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>Data início</label>
                 <input
@@ -838,18 +954,6 @@ const NovoProjetoModal = ({
                   onChange={(e) => set("data_previsao_conclusao", e.target.value)}
                   className={inputCls}
                 />
-              </div>
-              <div>
-                <label className={labelCls}>Status inicial</label>
-                <select
-                  value={form.status}
-                  onChange={(e) => set("status", e.target.value as ProjetoStatus)}
-                  className={inputCls}
-                >
-                  {STATUS_PROJETO.map((s) => (
-                    <option key={s.value} value={s.value}>{s.label}</option>
-                  ))}
-                </select>
               </div>
             </div>
 
@@ -1232,6 +1336,26 @@ const ProjetoDrawer = ({
               )}
             </div>
           </section>
+
+          {/* ── Novo Serviço Avulso (projeto concluído) ── */}
+          {projeto.status === "concluido" && (
+            <section>
+              <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-green-500/8 border border-green-500/20">
+                <CheckCircle2 className="h-4 w-4 text-green-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-green-400">Projeto concluído</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Cliente solicitou um novo serviço?</p>
+                </div>
+                <a
+                  href={`/admin/projetos?novo=1&tipo=servico_avulso&origem_id=${projeto.id}&nome=${encodeURIComponent(projeto.cliente_nome)}&tel=${encodeURIComponent(projeto.cliente_telefone ?? "")}&email=`}
+                  className="flex-shrink-0 inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-green-500/15 border border-green-500/30 text-green-400 hover:bg-green-500/25 transition-all"
+                >
+                  <Plus className="h-3 w-3" />
+                  Serviço Avulso
+                </a>
+              </div>
+            </section>
+          )}
 
           {/* ── Ordens de Serviço ── */}
           <section>
